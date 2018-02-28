@@ -6,10 +6,10 @@ import SwiftySensors
 import CoreBluetooth
 
 open class IRCLapRFService: Service, ServiceProtocol {
-    public static let uuid: String = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
+    public static let uuid: String = IRCLapRFDevice.BLEServiceUUID
     public static var characteristicTypes: Dictionary<String, Characteristic.Type> = [
         ControlPoint.uuid:  ControlPoint.self,
-        Measurement.uuid:   Measurement.self,
+        Stream.uuid:        Stream.self,
         BaudRate.uuid:      BaudRate.self,
         Parity.uuid:        Parity.self,
         FlowControl.uuid:   FlowControl.self,
@@ -17,10 +17,10 @@ open class IRCLapRFService: Service, ServiceProtocol {
         ]
     
     var controlPoint: ControlPoint? { return characteristic() }
-    var measurement: Measurement? { return characteristic() }
+    var stream: Stream? { return characteristic() }
     
     open class ControlPoint: Characteristic {
-        public static let uuid: String = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
+        public static let uuid: String = IRCLapRFDevice.BLEControlPointCharUUID
         
         required public init(service: Service, cbc: CBCharacteristic) {
             super.init(service: service, cbc: cbc)
@@ -43,8 +43,8 @@ open class IRCLapRFService: Service, ServiceProtocol {
         
     }
     
-    open class Measurement: Characteristic {
-        public static let uuid: String = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
+    open class Stream: Characteristic {
+        public static let uuid: String = IRCLapRFDevice.BLEStreamCharUUID
         
         required public init(service: Service, cbc: CBCharacteristic) {
             super.init(service: service, cbc: cbc)

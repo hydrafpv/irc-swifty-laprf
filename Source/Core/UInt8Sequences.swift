@@ -6,6 +6,10 @@ import Foundation
 
 public extension Sequence where Iterator.Element == UInt8 {
     
+    func hexString() -> String {
+        return map { String(format:"0x%02x ", $0) }.joined()
+    }
+    
     func readInteger<T : FixedWidthInteger>() -> T {
         let map = self.map{T($0)}
         let bytes = T.bitWidth / 8
