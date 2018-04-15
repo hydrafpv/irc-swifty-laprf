@@ -145,6 +145,7 @@ final public class IRCLapRFProtocol {
     
     private enum StatusField: UInt8 {
         case slotIndex      = 0x01
+        case flags          = 0x03
         case batteryVoltage = 0x21
         case lastRSSI       = 0x22
         case gateState      = 0x23
@@ -213,7 +214,7 @@ final public class IRCLapRFProtocol {
             if bytes.contains(EOR) {
                 // Good! We have a complete Record.
                 // Grab all bytes for a single record and decode it
-                // Continue processing the bytes (recusrively)
+                // Continue processing the bytes (recursively)
                 var buffer: [UInt8] = []
                 var byte: UInt8 = 0
                 repeat {
@@ -330,6 +331,8 @@ fileprivate extension IRCLapRFProtocol {
                     switch signature {
                     case StatusField.slotIndex.rawValue:
                         recordSlotIndex = max(0, packet.readInteger() - 1) // convert to 0-base
+                    case StatusField.flags.rawValue:
+                        let _: UInt16 = packet.readInteger()                        
                     case StatusField.batteryVoltage.rawValue:
                         let voltagemV: UInt16 = packet.readInteger()
                         device.batteryVoltage = Float(voltagemV) / 1000.0
