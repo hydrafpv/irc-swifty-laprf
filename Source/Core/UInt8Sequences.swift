@@ -15,7 +15,7 @@ public extension Sequence where Iterator.Element == UInt8 {
         let bytes = T.bitWidth / 8
         var integer: T = 0
         for i in 0 ..< bytes {
-            integer = map[i] << (i * 8)
+            integer |= map[i] << (i * 8)
         }
         return integer
     }

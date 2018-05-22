@@ -4,38 +4,50 @@
 
 import Foundation
 
+public protocol IRCLapRFDeviceDelegate: class {
+    func rssiRangeUpdated(_ device: IRCLapRFDevice)
+    func rfSetupRead(_ device: IRCLapRFDevice)
+    func settingsUpdated(_ device: IRCLapRFDevice)
+    func passingRecordRead(_ device: IRCLapRFDevice)
+    func statusUpdated(_ device: IRCLapRFDevice)
+}
+
 public class IRCLapRFDevice {
-    public static let MaxSlots = 16
+    
+    public static let USBVendorId = 0x04d8
+    public static let USBProductId = 0x000a
+    
+    public static let MaxSlots = 8
     
     public static let BLEServiceUUID            = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
     public static let BLEControlPointCharUUID   = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
     public static let BLEStreamCharUUID         = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
     
     public struct PassingRecord {
-        var pilotId: UInt8 = 0
-        var passingNumber: UInt32 = 0
-        var rtcTime: UInt64 = 0
+        public fileprivate(set) var pilotId: UInt8 = 0
+        public fileprivate(set) var passingNumber: UInt32 = 0
+        public fileprivate(set) var rtcTime: UInt64 = 0
     }
-    var passingRecords: [PassingRecord] = []
+    public fileprivate(set) var passingRecords: [PassingRecord] = []
     
     public struct RSSIRecord {
-        var minRssi: Float = 0
-        var maxRssi: Float = 0
-        var meanRssi: Float = 0
-        var lastRssi: Float = 0
+        public fileprivate(set) var minRssi: Float = 0
+        public fileprivate(set) var maxRssi: Float = 0
+        public fileprivate(set) var meanRssi: Float = 0
+        public fileprivate(set) var lastRssi: Float = 0
     }
-    var rssiPerSlot: [RSSIRecord] = Array(repeating: RSSIRecord(), count: IRCLapRFDevice.MaxSlots) {
+    public fileprivate(set) var rssiPerSlot: [RSSIRecord] = Array(repeating: RSSIRecord(), count: IRCLapRFDevice.MaxSlots) {
         didSet {
         }
     }
     
     public struct RFSetup {
-        var enabled: UInt16 = 0
-        var channel: UInt16 = 0
-        var band: UInt16 = 0
-        var gain: UInt16 = calculateGain(racePower: .Tx25mw, sensitivity: .normal)
-        var threshold: Float = 900
-        var frequency: UInt16 = 0
+        public fileprivate(set) var enabled: UInt16 = 0
+        public fileprivate(set) var channel: UInt16 = 0
+        public fileprivate(set) var band: UInt16 = 0
+        public fileprivate(set) var gain: UInt16 = calculateGain(racePower: .Tx25mw, sensitivity: .normal)
+        public fileprivate(set) var threshold: Float = 900
+        public fileprivate(set) var frequency: UInt16 = 0
         
         public enum RacePower: Int {
             case Tx25mw     = 58
@@ -76,8 +88,10 @@ public class IRCLapRFDevice {
         }
     }
     
-    public init() {
+    public weak var delegate: IRCLapRFDeviceDelegate?
+    public init(_ delegate: IRCLapRFDeviceDelegate) {
         let _ = IRCLapRFCRCCalc.instance
+        self.delegate = delegate
     }
     
     private var buffer: [UInt8] = []
@@ -128,8 +142,10 @@ final public class IRCLapRFProtocol {
         case minRSSI    = 0x20
         case maxRSSI    = 0x21
         case meanRSSI   = 0x22
+        case unknown1   = 0x23
         case customRate = 0x24
         case packetRate = 0x25
+        case unknown2   = 0x26
     }
     
     private enum PassingField: UInt8 {
@@ -221,7 +237,24 @@ final public class IRCLapRFProtocol {
                     byte = bytes.removeFirst()
                     buffer.append(byte)
                     if byte == EOR {
-                        decodeRecord(buffer, device: device)
+                        if let type = decodeRecord(buffer, device: device) {
+                            switch type {
+                            case .rssi:
+                                device.delegate?.rssiRangeUpdated(device)
+                            case .rfSetup:
+                                device.delegate?.rfSetupRead(device)
+                            case .stateControl:
+                                break
+                            case .settings:
+                                device.delegate?.settingsUpdated(device)
+                            case .passing:
+                                device.delegate?.passingRecordRead(device)
+                            case .status:
+                                device.delegate?.statusUpdated(device)
+                            case .error:
+                                break
+                            }
+                        }
                         // process remaining bytes recursively
                         processBytes(&bytes, device: device)
                     }
@@ -236,14 +269,14 @@ final public class IRCLapRFProtocol {
  */
 fileprivate extension IRCLapRFProtocol {
     
-    private static func decodeRecord(_ bytes: [UInt8], device: IRCLapRFDevice) {
+    private static func decodeRecord(_ bytes: [UInt8], device: IRCLapRFDevice) -> RecordType? {
         var packet = unescapeBytes(bytes)
         if packet.count < 8 {
-            return
+            return nil
         }
         let sor = packet[0]
         if sor != SOR {
-            return
+            return nil
         }
         let _ = UInt16(packet[1]) | UInt16(packet[2]) << 8
         let crc = UInt16(packet[3]) | UInt16(packet[4]) << 8
@@ -251,7 +284,7 @@ fileprivate extension IRCLapRFProtocol {
         packet[4] = 0
         let crc2 = IRCLapRFCRCCalc.instance.compute(packet)
         if crc != crc2 {
-            return
+            return nil
         }
         let typeRaw = UInt16(packet[5]) | UInt16(packet[6]) << 8
         if let type = RecordType(rawValue: typeRaw) {
@@ -267,7 +300,7 @@ fileprivate extension IRCLapRFProtocol {
                 let signature = packet.removeFirst()
                 let size = packet.removeFirst() // number of bytes
                 if size > packet.count {
-                    return  // bad bad bad packet.
+                    return nil // bad bad bad packet.
                 }
                 
                 switch type {
@@ -317,6 +350,12 @@ fileprivate extension IRCLapRFProtocol {
                         device.rssiPerSlot[Int(recordSlotIndex)].maxRssi = packet.readFloat()
                     case RSSIField.meanRSSI.rawValue:
                         device.rssiPerSlot[Int(recordSlotIndex)].meanRssi = packet.readFloat()
+                    case RSSIField.unknown1.rawValue:
+                        let val: UInt32 = packet.readInteger()
+                        // increments if the slot is enabled.
+                        // no idea what triggers the increment.
+                    case RSSIField.unknown2.rawValue:
+                        let val: UInt32 = packet.readInteger()
                     default:
                         print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x", type.rawValue, signature))
                     }
@@ -353,8 +392,9 @@ fileprivate extension IRCLapRFProtocol {
                 }
                 packet.removeFirst(Int(size))
             }
-            
+            return type
         }
+        return nil
     }
     
     private static func startPacket(_ type: RecordType) -> [UInt8] {
