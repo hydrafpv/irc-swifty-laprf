@@ -5,14 +5,14 @@
 import Foundation
 
 public protocol IRCLapRFDeviceDelegate: class {
-    func rssiRangeUpdated(_ device: IRCLapRFDevice)
-    func rfSetupRead(_ device: IRCLapRFDevice)
+    func rssiRangeUpdated(_ device: IRCLapRFDevice, slot: UInt8)
+    func rfSetupRead(_ device: IRCLapRFDevice, slot: UInt8)
     func settingsUpdated(_ device: IRCLapRFDevice)
     func passingRecordRead(_ device: IRCLapRFDevice)
     func statusUpdated(_ device: IRCLapRFDevice)
 }
 
-public class IRCLapRFDevice {
+public class IRCLapRFDevice: NSObject {
     
     public static let USBVendorId = 0x04d8
     public static let USBProductId = 0x000a
@@ -27,6 +27,9 @@ public class IRCLapRFDevice {
         public fileprivate(set) var pilotId: UInt8 = 0
         public fileprivate(set) var passingNumber: UInt32 = 0
         public fileprivate(set) var rtcTime: UInt64 = 0
+        public var rtcTimeSeconds: TimeInterval {
+            return Double(rtcTime) / (1000 * 1000)
+        }
     }
     public fileprivate(set) var passingRecords: [PassingRecord] = []
     
@@ -36,24 +39,21 @@ public class IRCLapRFDevice {
         public fileprivate(set) var meanRssi: Float = 0
         public fileprivate(set) var lastRssi: Float = 0
     }
-    public fileprivate(set) var rssiPerSlot: [RSSIRecord] = Array(repeating: RSSIRecord(), count: IRCLapRFDevice.MaxSlots) {
-        didSet {
-        }
-    }
+    public fileprivate(set) var rssiPerSlot: [RSSIRecord] = Array(repeating: RSSIRecord(), count: IRCLapRFDevice.MaxSlots)
     
-    public struct RFSetup {
-        public fileprivate(set) var enabled: UInt16 = 0
-        public fileprivate(set) var channel: UInt16 = 0
-        public fileprivate(set) var band: UInt16 = 0
-        public fileprivate(set) var gain: UInt16 = calculateGain(racePower: .Tx25mw, sensitivity: .normal)
-        public fileprivate(set) var threshold: Float = 900
-        public fileprivate(set) var frequency: UInt16 = 0
+    public class RFSetup {
+        public var enabled: UInt16 = 0
+        public var channel: UInt16 = 0
+        public var band: UInt16 = 0
+        public var gain: UInt16 = calculateGain(racePower: .tx25mw, sensitivity: .normal)
+        public var threshold: Float = 900
+        public var frequency: UInt16 = 0
         
         public enum RacePower: Int {
-            case Tx25mw     = 58
-            case Tx200mw    = 44
-            case Tx350mw    = 40
-            case Tx600mw    = 34
+            case tx25mw     = 58
+            case tx200mw    = 44
+            case tx350mw    = 40
+            case tx600mw    = 34
         }
         
         public enum Sensitivity: Int {
@@ -67,30 +67,33 @@ public class IRCLapRFDevice {
         public static func calculateGain(racePower: RacePower, sensitivity: Sensitivity) -> UInt16 {
             return UInt16(max(racePower.rawValue + sensitivity.rawValue, 0))
         }
+        public init() {
+            
+        }
     }
     
-    public fileprivate(set) var rfSetupPerSlot: [RFSetup] = Array(repeating: RFSetup(), count: IRCLapRFDevice.MaxSlots)
+    public var rfSetupPerSlot: [RFSetup] = []
     
-    public fileprivate(set) var batteryVoltage: Float = 0 {
-        didSet {
-        }
+    public var batteryVoltage: Float = 0
+    public var gateState: UInt8 = 0
+    public var detectionCount: UInt32 = 0
+    public var minLapTime: UInt32 = 0
+    public var statusFlags: UInt16 = 0
+    public var rtcTime: UInt64 = 0
+    public var timeRtcTime: UInt64 = 0
+    
+    public var rtcTimeSeconds: TimeInterval {
+        return Double(rtcTime) / (1000 * 1000)
     }
-    public fileprivate(set) var gateState: UInt8 = 0 {
-        didSet {
-        }
-    }
-    public fileprivate(set) var detectionCount: UInt32 = 0 {
-        didSet {
-        }
-    }
-    public fileprivate(set) var minLapTime: UInt32 = 0 {
-        didSet {
-        }
-    }
+    
+    public var tag: Int = 0
     
     public weak var delegate: IRCLapRFDeviceDelegate?
-    public init(_ delegate: IRCLapRFDeviceDelegate) {
+    public init(_ delegate: IRCLapRFDeviceDelegate? = nil) {
         let _ = IRCLapRFCRCCalc.instance
+        for _ in 0 ..< IRCLapRFDevice.MaxSlots {
+            rfSetupPerSlot.append(RFSetup())
+        }
         self.delegate = delegate
     }
     
@@ -124,6 +127,7 @@ final public class IRCLapRFProtocol {
         case settings       = 0xDA07
         case passing        = 0xDA09
         case status         = 0xDA0A
+        case time           = 0xDA0C
         case error          = 0xFFFF
     }
     
@@ -159,6 +163,10 @@ final public class IRCLapRFProtocol {
         case minLapTime     = 0x26
     }
     
+    private enum StateControlField: UInt8 {
+        case raceState  = 0x20
+    }
+    
     private enum StatusField: UInt8 {
         case slotIndex      = 0x01
         case flags          = 0x03
@@ -166,6 +174,18 @@ final public class IRCLapRFProtocol {
         case lastRSSI       = 0x22
         case gateState      = 0x23
         case detectionCount = 0x24
+    }
+    
+    private enum TimeField: UInt8 {
+        case rtcTime        = 0x02
+        case timeRtcTime    = 0x20
+    }
+    
+    public enum RaceState: UInt8 {
+        case stopped    = 0x00
+        case normal     = 0x01
+        case crashed    = 0x02
+        case shutdown   = 0xFE // Reset?
     }
     
     // must restart the puck after sending this message
@@ -182,18 +202,40 @@ final public class IRCLapRFProtocol {
         return finishPacket(&bytes)
     }
     
+    public static func requestRFSetupForSlot(_ slot: UInt8) -> [UInt8] {
+        var bytes = startPacket(.rfSetup)
+        bytes.append(contentsOf: slot.toBytes(RFSetupField.slotIndex.rawValue))
+        return finishPacket(&bytes)
+    }
+    
     public static func configurePilotSlot(_ slot: UInt8, config: IRCLapRFDevice.RFSetup) -> [UInt8] {
         assert(slot < IRCLapRFDevice.MaxSlots)
         // Convert the 0-based slot indices to (1-MaxSlots)
         // This increment / decrement is hidden and managed inside this class
         var bytes = startPacket(.rfSetup)
-        bytes.append(contentsOf: (slot + 1).toBytes(RFSetupField.slotIndex.rawValue))
+        bytes.append(contentsOf: UInt8(slot + 1).toBytes(RFSetupField.slotIndex.rawValue))
         bytes.append(contentsOf: config.enabled.toBytes(RFSetupField.enabled.rawValue))
         bytes.append(contentsOf: config.channel.toBytes(RFSetupField.channel.rawValue))
         bytes.append(contentsOf: config.band.toBytes(RFSetupField.band.rawValue))
         bytes.append(contentsOf: config.threshold.toBytes(RFSetupField.threshold.rawValue))
         bytes.append(contentsOf: config.gain.toBytes(RFSetupField.gain.rawValue))
         bytes.append(contentsOf: config.frequency.toBytes(RFSetupField.frequency.rawValue))
+        return finishPacket(&bytes)
+    }
+    
+    public static func configurePilotSlots(_ slots: [IRCLapRFDevice.RFSetup]) -> [UInt8] {
+        // Convert the 0-based slot indices to (1-MaxSlots)
+        // This increment / decrement is hidden and managed inside this class
+        var bytes = startPacket(.rfSetup)
+        for (idx, slot) in slots.enumerated() {
+            bytes.append(contentsOf: UInt8(idx + 1).toBytes(RFSetupField.slotIndex.rawValue))
+            bytes.append(contentsOf: slot.enabled.toBytes(RFSetupField.enabled.rawValue))
+            bytes.append(contentsOf: slot.channel.toBytes(RFSetupField.channel.rawValue))
+            bytes.append(contentsOf: slot.band.toBytes(RFSetupField.band.rawValue))
+            bytes.append(contentsOf: slot.threshold.toBytes(RFSetupField.threshold.rawValue))
+            bytes.append(contentsOf: slot.gain.toBytes(RFSetupField.gain.rawValue))
+            bytes.append(contentsOf: slot.frequency.toBytes(RFSetupField.frequency.rawValue))
+        }
         return finishPacket(&bytes)
     }
     
@@ -217,10 +259,40 @@ final public class IRCLapRFProtocol {
         return finishPacket(&bytes)
     }
     
+    // Request the current Real Time Clock Time on the device
+    public static func requestRTCTime() -> [UInt8] {
+        var bytes = startPacket(.time)
+        // Non-standard request format?
+        bytes.append(TimeField.rtcTime.rawValue)
+        bytes.append(0x00)
+        return finishPacket(&bytes)
+    }
+    
+    // Set the Real Time Clock Time on the device
+    // This shuts down the device, so definitely not functional yet
+    public static func resetRTCTime() -> [UInt8] {
+        // let msSince1970 = UInt64(Date().timeIntervalSince1970 * 1000)
+        var bytes = startPacket(.time)
+        bytes.append(contentsOf: UInt64(0).toBytes(TimeField.rtcTime.rawValue))
+        return finishPacket(&bytes)
+    }
+    
+    public static func setRaceState(_ state: RaceState) -> [UInt8] {
+        var bytes = startPacket(.stateControl)
+        bytes.append(contentsOf: state.rawValue.toBytes(StateControlField.raceState.rawValue))
+        return finishPacket(&bytes)
+    }
+    
+    public static func setMinLapTime(_ minLapTime: UInt32) -> [UInt8] {
+        var bytes = startPacket(.settings)
+        bytes.append(contentsOf: minLapTime.toBytes(SettingsField.minLapTime.rawValue))
+        return finishPacket(&bytes)
+    }
+    
     // This function modifies the bytes array passed in
     // ... removing bytes when a complete record is found and processed
     // ... or any stray bytes in front of SOR (Start of Record) byte
-    public static func processBytes(_ bytes:inout [UInt8], device: IRCLapRFDevice) {
+    public static func processBytes(_ bytes: inout [UInt8], device: IRCLapRFDevice) {
         while bytes.count > 0 && bytes[0] != SOR {
             // remove bytes until a SOR is found
             bytes.removeFirst()
@@ -237,12 +309,12 @@ final public class IRCLapRFProtocol {
                     byte = bytes.removeFirst()
                     buffer.append(byte)
                     if byte == EOR {
-                        if let type = decodeRecord(buffer, device: device) {
-                            switch type {
+                        if let record = decodeRecord(buffer, device: device) {
+                            switch record.type {
                             case .rssi:
-                                device.delegate?.rssiRangeUpdated(device)
+                                device.delegate?.rssiRangeUpdated(device, slot: record.slot ?? 0)
                             case .rfSetup:
-                                device.delegate?.rfSetupRead(device)
+                                device.delegate?.rfSetupRead(device, slot: record.slot ?? 0)
                             case .stateControl:
                                 break
                             case .settings:
@@ -251,6 +323,8 @@ final public class IRCLapRFProtocol {
                                 device.delegate?.passingRecordRead(device)
                             case .status:
                                 device.delegate?.statusUpdated(device)
+                            case .time:
+                                device.delegate?.settingsUpdated(device)
                             case .error:
                                 break
                             }
@@ -269,7 +343,7 @@ final public class IRCLapRFProtocol {
  */
 fileprivate extension IRCLapRFProtocol {
     
-    private static func decodeRecord(_ bytes: [UInt8], device: IRCLapRFDevice) -> RecordType? {
+    private static func decodeRecord(_ bytes: [UInt8], device: IRCLapRFDevice) -> (type: RecordType, slot: UInt8?)? {
         var packet = unescapeBytes(bytes)
         if packet.count < 8 {
             return nil
@@ -293,7 +367,7 @@ fileprivate extension IRCLapRFProtocol {
             if type == .passing {
                 passingRecord = IRCLapRFDevice.PassingRecord()
             }
-            var recordSlotIndex: UInt8 = 0
+            var recordSlotIndex: UInt8?
             
             // all bytes in between SOR and EOR are grouped into individual records
             while packet.count > 3 {
@@ -306,6 +380,7 @@ fileprivate extension IRCLapRFProtocol {
                 switch type {
                 case .error:
                     break
+                    
                 case .passing:
                     switch signature {
                     case PassingField.slotIndex.rawValue:
@@ -323,42 +398,65 @@ fileprivate extension IRCLapRFProtocol {
                     default:
                         print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x", type.rawValue, signature))
                     }
+                    
                 case .rfSetup:
                     switch signature {
                     case RFSetupField.slotIndex.rawValue:
                         recordSlotIndex = max(0, packet.readInteger() - 1)// convert to 0-base
                     case RFSetupField.enabled.rawValue:
-                        device.rfSetupPerSlot[Int(recordSlotIndex)].enabled = packet.readInteger()
+                        if let slot = recordSlotIndex {
+                            device.rfSetupPerSlot[Int(slot)].enabled = packet.readInteger()
+                        }
                     case RFSetupField.channel.rawValue:
-                        device.rfSetupPerSlot[Int(recordSlotIndex)].channel = packet.readInteger()
+                        if let slot = recordSlotIndex {
+                            device.rfSetupPerSlot[Int(slot)].channel = packet.readInteger()
+                        }
                     case RFSetupField.band.rawValue:
-                        device.rfSetupPerSlot[Int(recordSlotIndex)].band = packet.readInteger()
+                        if let slot = recordSlotIndex {
+                            device.rfSetupPerSlot[Int(slot)].band = packet.readInteger()
+                        }
                     case RFSetupField.gain.rawValue:
-                        device.rfSetupPerSlot[Int(recordSlotIndex)].gain = packet.readInteger()
+                        if let slot = recordSlotIndex {
+                            device.rfSetupPerSlot[Int(slot)].gain = packet.readInteger()
+                        }
                     case RFSetupField.frequency.rawValue:
-                        device.rfSetupPerSlot[Int(recordSlotIndex)].frequency = packet.readInteger()
+                        if let slot = recordSlotIndex {
+                            device.rfSetupPerSlot[Int(slot)].frequency = packet.readInteger()
+                        }
+                    case RFSetupField.threshold.rawValue:
+                        if let slot = recordSlotIndex {
+                            device.rfSetupPerSlot[Int(slot)].threshold = packet.readFloat()
+                        }
                     default:
                         print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x", type.rawValue, signature))
                     }
+                    
                 case .rssi:
                     switch signature {
                     case RSSIField.slotIndex.rawValue:
                         recordSlotIndex = max(0, packet.readInteger() - 1) // convert to 0-base
                     case RSSIField.minRSSI.rawValue:
-                        device.rssiPerSlot[Int(recordSlotIndex)].minRssi = packet.readFloat()
+                        if let slot = recordSlotIndex {
+                            device.rssiPerSlot[Int(slot)].minRssi = packet.readFloat()
+                        }
                     case RSSIField.maxRSSI.rawValue:
-                        device.rssiPerSlot[Int(recordSlotIndex)].maxRssi = packet.readFloat()
+                        if let slot = recordSlotIndex {
+                            device.rssiPerSlot[Int(slot)].maxRssi = packet.readFloat()
+                        }
                     case RSSIField.meanRSSI.rawValue:
-                        device.rssiPerSlot[Int(recordSlotIndex)].meanRssi = packet.readFloat()
+                        if let slot = recordSlotIndex {
+                            device.rssiPerSlot[Int(slot)].meanRssi = packet.readFloat()
+                        }
                     case RSSIField.unknown1.rawValue:
                         let val: UInt32 = packet.readInteger()
                         // increments if the slot is enabled.
-                        // no idea what triggers the increment.
+                    // no idea what triggers the increment.
                     case RSSIField.unknown2.rawValue:
                         let val: UInt32 = packet.readInteger()
                     default:
                         print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x", type.rawValue, signature))
                     }
+                    
                 case .settings:
                     switch signature {
                     case SettingsField.minLapTime.rawValue:
@@ -366,17 +464,20 @@ fileprivate extension IRCLapRFProtocol {
                     default:
                         print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x", type.rawValue, signature))
                     }
+                    
                 case .status:
                     switch signature {
                     case StatusField.slotIndex.rawValue:
                         recordSlotIndex = max(0, packet.readInteger() - 1) // convert to 0-base
                     case StatusField.flags.rawValue:
-                        let _: UInt16 = packet.readInteger()                        
+                        device.statusFlags = packet.readInteger()
                     case StatusField.batteryVoltage.rawValue:
                         let voltagemV: UInt16 = packet.readInteger()
                         device.batteryVoltage = Float(voltagemV) / 1000.0
                     case StatusField.lastRSSI.rawValue:
-                        device.rssiPerSlot[Int(recordSlotIndex)].lastRssi = packet.readFloat()
+                        if let slot = recordSlotIndex {
+                            device.rssiPerSlot[Int(slot)].lastRssi = packet.readFloat()
+                        }
                     case StatusField.gateState.rawValue:
                         device.gateState = packet.readInteger()
                     case StatusField.detectionCount.rawValue:
@@ -389,10 +490,21 @@ fileprivate extension IRCLapRFProtocol {
                     default:
                         print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x", type.rawValue, signature))
                     }
+                    
+                case .time:
+                    switch signature {
+                    case TimeField.rtcTime.rawValue:
+                        device.rtcTime = packet.readInteger()
+                    case TimeField.timeRtcTime.rawValue:
+                        device.timeRtcTime = packet.readInteger()
+                    default:
+                        print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x", type.rawValue, signature))
+                    }
+                    
                 }
                 packet.removeFirst(Int(size))
             }
-            return type
+            return (type, recordSlotIndex)
         }
         return nil
     }
@@ -538,4 +650,3 @@ fileprivate extension IRCLapRFCRCCalc {
         return compute(bytes) == 0x1b53
     }
 }
-
