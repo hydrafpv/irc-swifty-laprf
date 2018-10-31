@@ -5,7 +5,6 @@
 import Foundation
 import ORSSerial
 
-
 public protocol IRCLapRFUSBDelegate: class {
     func usbConnectionOpened(_ connection: IRCLapRFUSBConnection)
     func usbConnectionClosed(_ connection: IRCLapRFUSBConnection)

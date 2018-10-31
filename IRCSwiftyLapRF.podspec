@@ -14,7 +14,7 @@ Pod::Spec.new do |spec|
 
     spec.source                 = { :git => 'https://github.com/hydrafpv/irc-swifty-laprf.git',
                                     :tag => spec.version.to_s }
-    spec.pod_target_xcconfig    = { 'SWIFT_VERSION' => '4.0' }
+    spec.pod_target_xcconfig    = { 'SWIFT_VERSION' => '4.2' }
     spec.default_subspec        = 'Core'
 
     spec.subspec 'Core' do |core|
