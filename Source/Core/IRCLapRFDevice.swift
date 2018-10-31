@@ -33,13 +33,13 @@ public class IRCLapRFDevice: NSObject {
     }
     public fileprivate(set) var passingRecords: [PassingRecord] = []
     
-    public struct RSSIRecord {
-        public fileprivate(set) var minRssi: Float = 0
-        public fileprivate(set) var maxRssi: Float = 0
-        public fileprivate(set) var meanRssi: Float = 0
-        public fileprivate(set) var lastRssi: Float = 0
+    public class RSSIRecord {
+        public var minRssi: Float = 0
+        public var maxRssi: Float = 0
+        public var meanRssi: Float = 0
+        public var lastRssi: Float = 0
     }
-    public fileprivate(set) var rssiPerSlot: [RSSIRecord] = Array(repeating: RSSIRecord(), count: IRCLapRFDevice.MaxSlots)
+    public fileprivate(set) var rssiPerSlot: [RSSIRecord] = []
     
     public class RFSetup {
         public var enabled: UInt16 = 0
@@ -93,6 +93,7 @@ public class IRCLapRFDevice: NSObject {
         let _ = IRCLapRFCRCCalc.instance
         for _ in 0 ..< IRCLapRFDevice.MaxSlots {
             rfSetupPerSlot.append(RFSetup())
+            rssiPerSlot.append(RSSIRecord())
         }
         self.delegate = delegate
     }
