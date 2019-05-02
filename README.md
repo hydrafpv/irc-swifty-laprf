@@ -33,3 +33,6 @@ ToDos:
 - Add a Band + Channel mapping for frequencies
 - Test BLE on tvOS (shouldn't be an issue)
 
+
+
+https://docs.google.com/document/d/14s5UGETJ-V6FeKhqPQLM142oCMjaFw0qwsx6tuxQxq8/edit#

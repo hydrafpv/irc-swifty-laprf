@@ -8,11 +8,19 @@ public protocol IRCLapRFDeviceDelegate: class {
     func rssiRangeUpdated(_ device: IRCLapRFDevice, slot: UInt8)
     func rfSetupRead(_ device: IRCLapRFDevice, slot: UInt8)
     func settingsUpdated(_ device: IRCLapRFDevice)
-    func passingRecordRead(_ device: IRCLapRFDevice)
+    func timeUpdated(_ device: IRCLapRFDevice)
+    func passingRecordRead(_ device: IRCLapRFDevice, record: IRCLapRFDevice.PassingRecord)
     func statusUpdated(_ device: IRCLapRFDevice)
 }
 
 public class IRCLapRFDevice: NSObject {
+    
+    public enum GateState: UInt8 {
+        case idle       = 0x00
+        case active     = 0x01
+        case crashed    = 0x02
+        case shutdown   = 0xFE // Reset?
+    }
     
     public static let USBVendorId = 0x04d8
     public static let USBProductId = 0x000a
@@ -24,12 +32,16 @@ public class IRCLapRFDevice: NSObject {
     public static let BLEStreamCharUUID         = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
     
     public struct PassingRecord {
+        public fileprivate(set) var decoderId: UInt32 = 0
         public fileprivate(set) var pilotId: UInt8 = 0
         public fileprivate(set) var passingNumber: UInt32 = 0
         public fileprivate(set) var rtcTime: UInt64 = 0
+        public fileprivate(set) var flags: UInt16 = 0
+        public fileprivate(set) var peakHeight: UInt16 = 0
         public var rtcTimeSeconds: TimeInterval {
             return Double(rtcTime) / (1000 * 1000)
         }
+        public fileprivate(set) var rtcTimeLocalSeconds: TimeInterval = 0
     }
     public fileprivate(set) var passingRecords: [PassingRecord] = []
     
@@ -75,15 +87,30 @@ public class IRCLapRFDevice: NSObject {
     public var rfSetupPerSlot: [RFSetup] = []
     
     public var batteryVoltage: Float = 0
-    public var gateState: UInt8 = 0
+    public var gateState: GateState = .idle
     public var detectionCount: UInt32 = 0
     public var minLapTime: UInt32 = 0
     public var statusFlags: UInt16 = 0
-    public var rtcTime: UInt64 = 0
+    public var rtcTime: UInt64 = 0 {
+        didSet {
+            if let requestTime = rtcRequest {
+                let now = Date()
+                let lt = now.timeIntervalSince(requestTime) * 0.5
+                rtcTimeLocalSeconds = now.addingTimeInterval(-lt).timeIntervalSince1970 - rtcTimeSeconds
+                print("Calculated Local RTC Time")
+                rtcRequest = nil
+            }
+        }
+    }
     public var timeRtcTime: UInt64 = 0
     
     public var rtcTimeSeconds: TimeInterval {
         return Double(rtcTime) / (1000 * 1000)
+    }
+    public private(set) var rtcTimeLocalSeconds: TimeInterval = 0
+    
+    public var timeRtcTimeSeconds: TimeInterval {
+        return Double(timeRtcTime) / (1000 * 1000)
     }
     
     public var tag: Int = 0
@@ -108,6 +135,8 @@ public class IRCLapRFDevice: NSObject {
         buffer.append(contentsOf: data.map{$0})
         IRCLapRFProtocol.processBytes(&buffer, device: self)
     }
+    
+    fileprivate var rtcRequest: Date?
 }
 
 
@@ -126,6 +155,7 @@ final public class IRCLapRFProtocol {
         case rfSetup        = 0xDA02
         case stateControl   = 0xDA04
         case settings       = 0xDA07
+        case descriptor     = 0xDA08
         case passing        = 0xDA09
         case status         = 0xDA0A
         case time           = 0xDA0C
@@ -156,7 +186,10 @@ final public class IRCLapRFProtocol {
     private enum PassingField: UInt8 {
         case slotIndex      = 0x01
         case rtcTime        = 0x02
+        case decoderId      = 0x20
         case passingNumber  = 0x21
+        case peakHeight     = 0x22
+        case flags          = 0x23
     }
     
     private enum SettingsField: UInt8 {
@@ -165,7 +198,7 @@ final public class IRCLapRFProtocol {
     }
     
     private enum StateControlField: UInt8 {
-        case raceState  = 0x20
+        case gateState  = 0x20
     }
     
     private enum StatusField: UInt8 {
@@ -182,16 +215,15 @@ final public class IRCLapRFProtocol {
         case timeRtcTime    = 0x20
     }
     
-    public enum RaceState: UInt8 {
-        case stopped    = 0x00
-        case normal     = 0x01
-        case crashed    = 0x02
-        case shutdown   = 0xFE // Reset?
-    }
-    
     // must restart the puck after sending this message
     public static func enableBinaryProtocol() -> [UInt8] {
         return [0x55,0x70,0x70,0x0d,0x0a]
+    }
+    
+    // request the Timer Protocol and Version Info
+    public static func requestDescriptor() -> [UInt8] {
+        var bytes = startPacket(.descriptor)
+        return finishPacket(&bytes)
     }
     
     // request the RF setup packets from all slots from the gate
@@ -202,10 +234,17 @@ final public class IRCLapRFProtocol {
         }
         return finishPacket(&bytes)
     }
+
+    public static func requestSettings() -> [UInt8] {
+        var bytes = startPacket(.settings)
+        bytes.append(SettingsField.minLapTime.rawValue)
+        bytes.append(0x00)
+        return finishPacket(&bytes)
+    }
     
     public static func requestRFSetupForSlot(_ slot: UInt8) -> [UInt8] {
         var bytes = startPacket(.rfSetup)
-        bytes.append(contentsOf: slot.toBytes(RFSetupField.slotIndex.rawValue))
+        bytes.append(contentsOf: UInt8(slot + 1).toBytes(RFSetupField.slotIndex.rawValue))
         return finishPacket(&bytes)
     }
     
@@ -261,32 +300,33 @@ final public class IRCLapRFProtocol {
     }
     
     // Request the current Real Time Clock Time on the device
-    public static func requestRTCTime() -> [UInt8] {
+    public static func requestRTCTime(_ device: IRCLapRFDevice) -> [UInt8] {
         var bytes = startPacket(.time)
         // Non-standard request format?
         bytes.append(TimeField.rtcTime.rawValue)
         bytes.append(0x00)
+        device.rtcRequest = Date()
         return finishPacket(&bytes)
     }
     
     // Set the Real Time Clock Time on the device
     // This shuts down the device, so definitely not functional yet
     public static func resetRTCTime() -> [UInt8] {
-        // let msSince1970 = UInt64(Date().timeIntervalSince1970 * 1000)
+         let msSince1970 = UInt64(Date().timeIntervalSince1970 * 1000)
         var bytes = startPacket(.time)
-        bytes.append(contentsOf: UInt64(0).toBytes(TimeField.rtcTime.rawValue))
+        bytes.append(contentsOf: msSince1970.toBytes(TimeField.rtcTime.rawValue))
         return finishPacket(&bytes)
     }
     
-    public static func setRaceState(_ state: RaceState) -> [UInt8] {
+    public static func setGateState(_ state: IRCLapRFDevice.GateState) -> [UInt8] {
         var bytes = startPacket(.stateControl)
-        bytes.append(contentsOf: state.rawValue.toBytes(StateControlField.raceState.rawValue))
+        bytes.append(contentsOf: state.rawValue.toBytes(StateControlField.gateState.rawValue))
         return finishPacket(&bytes)
     }
     
-    public static func setMinLapTime(_ minLapTime: UInt32) -> [UInt8] {
+    public static func setMinLapTime(_ milliseconds: UInt32) -> [UInt8] {
         var bytes = startPacket(.settings)
-        bytes.append(contentsOf: minLapTime.toBytes(SettingsField.minLapTime.rawValue))
+        bytes.append(contentsOf: milliseconds.toBytes(SettingsField.minLapTime.rawValue))
         return finishPacket(&bytes)
     }
     
@@ -301,6 +341,7 @@ final public class IRCLapRFProtocol {
         if bytes.count > 0 {
             // look for a EOR
             if bytes.contains(EOR) {
+                
                 // Good! We have a complete Record.
                 // Grab all bytes for a single record and decode it
                 // Continue processing the bytes (recursively)
@@ -318,14 +359,18 @@ final public class IRCLapRFProtocol {
                                 device.delegate?.rfSetupRead(device, slot: record.slot ?? 0)
                             case .stateControl:
                                 break
+                            case .descriptor:
+                                break
                             case .settings:
                                 device.delegate?.settingsUpdated(device)
                             case .passing:
-                                device.delegate?.passingRecordRead(device)
+                                if let pr = device.passingRecords.last {
+                                    device.delegate?.passingRecordRead(device, record: pr)
+                                }
                             case .status:
                                 device.delegate?.statusUpdated(device)
                             case .time:
-                                device.delegate?.settingsUpdated(device)
+                                device.delegate?.timeUpdated(device)
                             case .error:
                                 break
                             }
@@ -388,7 +433,9 @@ fileprivate extension IRCLapRFProtocol {
                         passingRecord?.pilotId = max(0, packet.readInteger() - 1)// convert to 0-base
                     case PassingField.rtcTime.rawValue:
                         passingRecord?.rtcTime = packet.readInteger()
-                        
+                        if let prTime = passingRecord?.rtcTimeSeconds {
+                            passingRecord?.rtcTimeLocalSeconds = device.rtcTimeLocalSeconds + prTime
+                        }
                         // complete the passing record
                         if let record = passingRecord {
                             device.passingRecords.append(record)
@@ -396,10 +443,26 @@ fileprivate extension IRCLapRFProtocol {
                         }
                     case PassingField.passingNumber.rawValue:
                         passingRecord?.passingNumber = packet.readInteger()
+                    case PassingField.decoderId.rawValue:
+                        passingRecord?.decoderId = packet.readInteger()
+                    case PassingField.peakHeight.rawValue:
+//                        print("READING PEAK HEIGHT")
+                        passingRecord?.peakHeight = packet.readInteger()
+//                        let f = packet.readFloat()
+//                        print("READING PEAK HEIGHT \(f)")
+                    case PassingField.flags.rawValue:
+                        passingRecord?.flags = packet.readInteger()
+                        
                     default:
-                        print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x", type.rawValue, signature))
+                        print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x, Size: %d", type.rawValue, signature, size))
                     }
-                    
+                case .descriptor:
+                    switch signature {
+                    default:
+//                        Record Type: 0xda08, Unknown Signature: 0x20, Size: 4
+//                        Record Type: 0xda08, Unknown Signature: 0x21, Size: 1
+                        print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x, Size: %d", type.rawValue, signature, size))
+                    }
                 case .rfSetup:
                     switch signature {
                     case RFSetupField.slotIndex.rawValue:
@@ -429,7 +492,7 @@ fileprivate extension IRCLapRFProtocol {
                             device.rfSetupPerSlot[Int(slot)].threshold = packet.readFloat()
                         }
                     default:
-                        print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x", type.rawValue, signature))
+                        print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x, Size: %d", type.rawValue, signature, size))
                     }
                     
                 case .rssi:
@@ -451,11 +514,11 @@ fileprivate extension IRCLapRFProtocol {
                     case RSSIField.unknown1.rawValue:
                         let val: UInt32 = packet.readInteger()
                         // increments if the slot is enabled.
-                    // no idea what triggers the increment.
+                        // no idea what triggers the increment.
                     case RSSIField.unknown2.rawValue:
                         let val: UInt32 = packet.readInteger()
                     default:
-                        print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x", type.rawValue, signature))
+                        print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x, Size: %d", type.rawValue, signature, size))
                     }
                     
                 case .settings:
@@ -463,7 +526,7 @@ fileprivate extension IRCLapRFProtocol {
                     case SettingsField.minLapTime.rawValue:
                         device.minLapTime = packet.readInteger()
                     default:
-                        print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x", type.rawValue, signature))
+                        print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x, Size: %d", type.rawValue, signature, size))
                     }
                     
                 case .status:
@@ -480,16 +543,18 @@ fileprivate extension IRCLapRFProtocol {
                             device.rssiPerSlot[Int(slot)].lastRssi = packet.readFloat()
                         }
                     case StatusField.gateState.rawValue:
-                        device.gateState = packet.readInteger()
+                        device.gateState = IRCLapRFDevice.GateState(rawValue: packet.readInteger()) ?? .idle
                     case StatusField.detectionCount.rawValue:
                         device.detectionCount = packet.readInteger()
                     default:
-                        print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x", type.rawValue, signature))
+                        print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x, Size: %d", type.rawValue, signature, size))
                     }
                 case .stateControl:
                     switch signature {
+                    case StateControlField.gateState.rawValue:
+                        device.gateState = IRCLapRFDevice.GateState(rawValue: packet.readInteger()) ?? .idle
                     default:
-                        print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x", type.rawValue, signature))
+                        print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x, Size: %d", type.rawValue, signature, size))
                     }
                     
                 case .time:
@@ -499,13 +564,15 @@ fileprivate extension IRCLapRFProtocol {
                     case TimeField.timeRtcTime.rawValue:
                         device.timeRtcTime = packet.readInteger()
                     default:
-                        print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x", type.rawValue, signature))
+                        print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x, Size: %d", type.rawValue, signature, size))
                     }
                     
                 }
                 packet.removeFirst(Int(size))
             }
             return (type, recordSlotIndex)
+        } else {
+            print("Unrecognized Type: \(typeRaw)")
         }
         return nil
     }

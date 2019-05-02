@@ -1,7 +1,7 @@
 Pod::Spec.new do |spec|
 
     spec.name                   = 'IRCSwiftyLapRF'
-    spec.version                = '0.1'
+    spec.version                = '0.2'
     spec.summary                = 'ImmersionRC LapRF Comm Library'
 
     spec.homepage               = 'https://github.com/hydrafpv/irc-swifty-laprf'
@@ -14,11 +14,12 @@ Pod::Spec.new do |spec|
 
     spec.source                 = { :git => 'https://github.com/hydrafpv/irc-swifty-laprf.git',
                                     :tag => spec.version.to_s }
-    spec.pod_target_xcconfig    = { 'SWIFT_VERSION' => '4.2' }
+
     spec.default_subspec        = 'Core'
+    spec.swift_version          = '5.0'
 
     spec.subspec 'Core' do |core|
-        core.source_files   = 'Source/Core/**/*.swift'
+        core.source_files       = 'Source/Core/**/*.swift'
     end
 
     spec.subspec 'SwiftySensors' do |bluetooth|
