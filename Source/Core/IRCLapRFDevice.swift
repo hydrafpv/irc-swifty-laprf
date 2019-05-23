@@ -446,10 +446,7 @@ fileprivate extension IRCLapRFProtocol {
                     case PassingField.decoderId.rawValue:
                         passingRecord?.decoderId = packet.readInteger()
                     case PassingField.peakHeight.rawValue:
-//                        print("READING PEAK HEIGHT")
                         passingRecord?.peakHeight = packet.readInteger()
-//                        let f = packet.readFloat()
-//                        print("READING PEAK HEIGHT \(f)")
                     case PassingField.flags.rawValue:
                         passingRecord?.flags = packet.readInteger()
                         
@@ -459,8 +456,8 @@ fileprivate extension IRCLapRFProtocol {
                 case .descriptor:
                     switch signature {
                     default:
-//                        Record Type: 0xda08, Unknown Signature: 0x20, Size: 4
-//                        Record Type: 0xda08, Unknown Signature: 0x21, Size: 1
+                        // Record Type: 0xda08, Unknown Signature: 0x20, Size: 4
+                        // Record Type: 0xda08, Unknown Signature: 0x21, Size: 1
                         print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x, Size: %d", type.rawValue, signature, size))
                     }
                 case .rfSetup:

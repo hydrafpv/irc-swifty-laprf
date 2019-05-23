@@ -20,10 +20,11 @@ Pod::Spec.new do |spec|
 
     spec.subspec 'Core' do |core|
         core.source_files       = 'Source/Core/**/*.swift'
+        core.dependency         'Signals'
     end
 
-    spec.subspec 'SwiftySensors' do |bluetooth|
-        bluetooth.source_files  = 'Source/SwiftySensors/**/*.swift'
+    spec.subspec 'Bluetooth' do |bluetooth|
+        bluetooth.source_files  = 'Source/Bluetooth/**/*.swift'
         bluetooth.dependency    'IRCSwiftyLapRF/Core'
         bluetooth.dependency    'SwiftySensors'
     end
@@ -34,4 +35,9 @@ Pod::Spec.new do |spec|
         serialUSB.dependency    'ORSSerialPort'
     end
 
+    spec.subspec 'Ethernet' do |ethernet|
+        ethernet.source_files   = 'Source/Ethernet/**/*.swift'
+        ethernet.dependency     'IRCSwiftyLapRF/Core'
+        ethernet.dependency     'CocoaAsyncSocket'
+    end
 end

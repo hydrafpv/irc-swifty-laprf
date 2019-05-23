@@ -1,12 +1,12 @@
 //
-//  IRCLapRFService.swift
+//  IRCLapRFBLEService.swift
 //
 
 import CoreBluetooth
 import Signals
 import SwiftySensors
 
-open class IRCLapRFService: Service, ServiceProtocol {
+open class IRCLapRFBLEService: Service, ServiceProtocol {
     public static let uuid: String = IRCLapRFDevice.BLEServiceUUID
     public static var characteristicTypes: Dictionary<String, Characteristic.Type> = [
         ControlPoint.uuid:  ControlPoint.self,
@@ -15,7 +15,7 @@ open class IRCLapRFService: Service, ServiceProtocol {
         Parity.uuid:        Parity.self,
         FlowControl.uuid:   FlowControl.self,
         Enable.uuid:        Enable.self
-        ]
+    ]
     
     public var controlPoint: ControlPoint? { return characteristic(IRCLapRFDevice.BLEControlPointCharUUID) }
     
@@ -38,8 +38,6 @@ open class IRCLapRFService: Service, ServiceProtocol {
                 cbCharacteristic.write(Data(chunk), writeType: writeType)
             }
         }
-        
-        
         
         public func requestDescriptor() {
             var command = IRCLapRFProtocol.requestDescriptor()
@@ -67,8 +65,9 @@ open class IRCLapRFService: Service, ServiceProtocol {
         }
         
         public func resetRTCTime() {
-//            let command = IRCLapRFProtocol.resetRTCTime()
-//            cbCharacteristic.write(Data(command), writeType: writeType)
+            // This Request is not correct.
+            // let command = IRCLapRFProtocol.resetRTCTime()
+            // cbCharacteristic.write(Data(command), writeType: writeType)
         }
         
         public func configurePilotSlot(_ slot: UInt8, config: IRCLapRFDevice.RFSetup) {
@@ -103,7 +102,7 @@ open class IRCLapRFService: Service, ServiceProtocol {
         
         override open func valueUpdated() {
             if let data = cbCharacteristic.value {
-//                print(data.hexString())
+                // print(data.hexString())
             }
             super.valueUpdated()
         }
@@ -121,7 +120,7 @@ open class IRCLapRFService: Service, ServiceProtocol {
         
         override open func valueUpdated() {
             if let data = cbCharacteristic.value {
-                (service?.sensor as? IRCSensor)?.device.ingestData(data)
+                (service?.sensor as? IRCLapRFBLESensor)?.device.ingestData(data)
             }
             super.valueUpdated()
         }
@@ -201,144 +200,3 @@ open class IRCLapRFService: Service, ServiceProtocol {
 }
 
 
-
-
-
-
-
-open class IRCSensor: Sensor {
-    
-    public let device = IRCLapRFDevice()
-    
-    // One-To-Many Messaging
-    public let onRSSIRangeUpdated = Signal<(IRCSensor, UInt8)>()
-    public let onRFSetupRead = Signal<(IRCSensor, UInt8)>()
-    public let onTimeUpdated = Signal<IRCSensor>()
-    public let onSettingsUpdated = Signal<IRCSensor>()
-    public let onStatusUpdated = Signal<IRCSensor>()
-    public let onPassingRecordRead = Signal<(IRCSensor, IRCLapRFDevice.PassingRecord)>()
-    
-    public private(set) var lastRSSI:[[Float]] = []
-    
-    // Quick Access to IRC Service and Control Point
-    private var ircService: IRCLapRFService? { return service(IRCLapRFService.uuid) }
-    private var controlPoint: IRCLapRFService.ControlPoint? { return ircService?.controlPoint }
-    
-    @discardableResult public func requestRFSetup() -> Bool {
-        guard let cp = controlPoint else { return false }
-        cp.requestRFSetup()
-        return true
-    }
-    
-    @discardableResult public func requestRFSetupForSlot(_ slot: UInt8) -> Bool {
-        guard let cp = controlPoint else { return false }
-        cp.requestRFSetupForSlot(slot)
-        return true
-    }
-    
-    @discardableResult public func requestRTCTime() -> Bool {
-        guard let cp = controlPoint else { return false }
-        cp.requestRTCTime(device)
-        return true
-    }
-    
-    @discardableResult public func requestDescriptor() -> Bool {
-        guard let cp = controlPoint else { return false }
-        cp.requestDescriptor()
-        return true
-    }
-    @discardableResult public func requestSettings() -> Bool {
-        guard let cp = controlPoint else { return false }
-        cp.requestSettings()
-        return true
-    }
-    
-    @discardableResult public func resetRTCTime() -> Bool {
-        guard let cp = controlPoint else { return false }
-        cp.resetRTCTime()
-        return true
-    }
-    
-    @discardableResult public func configurePilotSlot(_ slot: UInt8, config: IRCLapRFDevice.RFSetup) -> Bool {
-        guard let cp = controlPoint else { return false }
-        cp.configurePilotSlot(slot, config: config)
-        return true
-    }
-    
-    @discardableResult public func configurePilotSlots(slots: [IRCLapRFDevice.RFSetup]) -> Bool {
-        guard let cp = controlPoint else { return false }
-        cp.configurePilotSlots(slots)
-        return true
-    }
-    
-    @discardableResult public func setGateState(_ state: IRCLapRFDevice.GateState) -> Bool {
-        guard let cp = controlPoint else { return false }
-        device.gateState = state
-        cp.setGateState(state)
-        return true
-    }
-    
-    @discardableResult public func setMinLapTime(_ milliseconds: UInt32) -> Bool {
-        guard let cp = controlPoint else { return false }
-        cp.setMinLapTime(milliseconds)
-        return true
-    }
-    
-    @discardableResult public func setRSSIPacketRate(_ milliseconds: UInt32) -> Bool {
-        guard let cp = controlPoint else { return false }
-        cp.setRSSIPacketRate(milliseconds)
-        return true
-    }
-    
-    @discardableResult public func setStatusMessageInterval(_ milliseconds: UInt16) -> Bool {
-        guard let cp = controlPoint else { return false }
-        cp.setStatusMessageInterval(milliseconds)
-        return true
-    }
-    
-    public var name: String {
-        return peripheral.name ?? "Nameless"
-    }
-    
-    
-    public required init(peripheral: CBPeripheral, advertisements: [CBUUID] = []) {
-        super.init(peripheral: peripheral, advertisements: advertisements)
-        device.delegate = self
-        
-        for _ in 0 ..< IRCLapRFDevice.MaxSlots {
-            lastRSSI.append([])
-        }
-    }
-}
-
-extension IRCSensor: IRCLapRFDeviceDelegate {
-    public func rssiRangeUpdated(_ device: IRCLapRFDevice, slot: UInt8) {
-        let rssi = device.rssiPerSlot[Int(slot)]
-        lastRSSI[Int(slot)].append(rssi.lastRssi)
-        while lastRSSI[Int(slot)].count > 120 {
-            lastRSSI[Int(slot)].removeFirst()
-        }
-        onRSSIRangeUpdated => (self, slot)
-    }
-
-    public func rfSetupRead(_ device: IRCLapRFDevice, slot: UInt8) {
-        onRFSetupRead => (self, slot)
-    }
-
-    public func timeUpdated(_ device: IRCLapRFDevice) {
-        onTimeUpdated => self
-    }
-    
-    public func settingsUpdated(_ device: IRCLapRFDevice) {
-        onSettingsUpdated => self
-    }
-
-    public func passingRecordRead(_ device: IRCLapRFDevice, record: IRCLapRFDevice.PassingRecord) {
-        onPassingRecordRead => (self, record)
-    }
-
-    public func statusUpdated(_ device: IRCLapRFDevice) {
-        onStatusUpdated => self
-    }
-
-}
