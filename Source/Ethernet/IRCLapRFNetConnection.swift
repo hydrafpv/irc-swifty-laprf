@@ -19,13 +19,21 @@ open class IRCLapRFNetConnection: NSObject, IRCLapRFConnection, IRCLapRFDeviceDe
     public var lastRSSI:[[Float]] = []
     
     public var name: String {
-        return "LapRF Net"
+        return "\(socketHost):\(socketPort)"
     }
     
     private var socket: GCDAsyncSocket!
-    
+    public let socketHost: String
+    public let socketPort: UInt16
+    public let onConnected = Signal<Bool>()
+    var isConnected: Bool {
+        return socket.isConnected
+    }
     public init(_ host: String, port: UInt16 = 5403) {
+        self.socketHost = host
+        self.socketPort = port
         super.init()
+        
         device.delegate = self
         
         for _ in 0 ..< IRCLapRFDevice.MaxSlots {
@@ -116,10 +124,12 @@ open class IRCLapRFNetConnection: NSObject, IRCLapRFConnection, IRCLapRFDeviceDe
 
 extension IRCLapRFNetConnection: GCDAsyncSocketDelegate {
     public func socketDidDisconnect(_ socket: GCDAsyncSocket, withError err: Error?) {
+        onConnected => false
         print(err?.localizedDescription)
     }
     
     public func socket(_ socket: GCDAsyncSocket, didConnectToHost host: String, port: UInt16) {
+        onConnected => true
         requestRFSetup()
         socket.readData(withTimeout: -1, tag: 0)
     }
