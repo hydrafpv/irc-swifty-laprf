@@ -1,0 +1,43 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "CocoaAsyncSocket",
+        "repositoryURL": "https://github.com/netizen01/CocoaAsyncSocket",
+        "state": {
+          "branch": "master",
+          "revision": "00551576ddba826501d1006d5097d961e1f92a66",
+          "version": null
+        }
+      },
+      {
+        "package": "ORSSerialPort",
+        "repositoryURL": "https://github.com/armadsen/ORSSerialPort",
+        "state": {
+          "branch": "master",
+          "revision": "f4879d70e8c2ed603532cb918e280991cb75f839",
+          "version": null
+        }
+      },
+      {
+        "package": "SwiftySensors",
+        "repositoryURL": "https://github.com/kinetic-fit/sensors-swift",
+        "state": {
+          "branch": "master",
+          "revision": "c699e1d5af59e22eb117aaf33c151048d48ac95d",
+          "version": null
+        }
+      },
+      {
+        "package": "Signals",
+        "repositoryURL": "https://github.com/artman/Signals",
+        "state": {
+          "branch": null,
+          "revision": "e792eb51a64f85d043d17f09f6323b803b9f73b8",
+          "version": "6.1.0"
+        }
+      }
+    ]
+  },
+  "version": 1
+}

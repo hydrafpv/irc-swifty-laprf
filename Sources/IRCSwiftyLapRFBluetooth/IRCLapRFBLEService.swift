@@ -2,6 +2,7 @@
 //  IRCLapRFBLEService.swift
 //
 
+import IRCSwiftyLapRFCore
 import CoreBluetooth
 import Signals
 import SwiftySensors
@@ -101,7 +102,7 @@ open class IRCLapRFBLEService: Service, ServiceProtocol {
         }
         
         override open func valueUpdated() {
-            if let data = cbCharacteristic.value {
+            if let _ = cbCharacteristic.value {
                 // print(data.hexString())
             }
             super.valueUpdated()

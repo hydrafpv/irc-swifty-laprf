@@ -2,6 +2,7 @@
 //  IRCLapRFBLESensor.swift
 //
 
+import IRCSwiftyLapRFCore
 import CoreBluetooth
 import Signals
 import SwiftySensors

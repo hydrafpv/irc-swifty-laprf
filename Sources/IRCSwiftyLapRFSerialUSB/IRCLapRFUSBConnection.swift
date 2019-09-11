@@ -2,6 +2,7 @@
 //  IRCLapRFUSBConnection.swift
 //
 
+import IRCSwiftyLapRFCore
 import Foundation
 import ORSSerial
 
@@ -40,14 +41,14 @@ open class IRCLapRFUSBConnection: NSObject {
         
         print("Enabling Binary Protocol")
         let bytes = IRCLapRFProtocol.enableBinaryProtocol()
-        serialPort.send(Data(bytes: bytes))
+        serialPort.send(Data(bytes))
     }
     
     public func requestRFSetup() {
         guard let serialPort = serialPort else { return }
         print("Requesting Setup")
         let bytes = IRCLapRFProtocol.requestRFSetup()
-        serialPort.send(Data(bytes: bytes))
+        serialPort.send(Data(bytes))
     }
     
     public func setRSSIPacketRate(_ milliseconds: UInt32) {
@@ -55,7 +56,7 @@ open class IRCLapRFUSBConnection: NSObject {
         
         print("Setting RSSI Packet Rate")
         let bytes = IRCLapRFProtocol.setRSSIPacketRate(milliseconds)
-        serialPort.send(Data(bytes: bytes))
+        serialPort.send(Data(bytes))
     }
     
     public func setStatusMessageInterval(_ milliseconds: UInt16) {
@@ -63,7 +64,7 @@ open class IRCLapRFUSBConnection: NSObject {
         
         print("Setting Status Message Interval")
         let bytes = IRCLapRFProtocol.setStatusMessageInterval(milliseconds)
-        serialPort.send(Data(bytes: bytes))
+        serialPort.send(Data(bytes))
     }
     
     public func configurePilotSlot(_ slot: UInt8, config: IRCLapRFDevice.RFSetup) {
@@ -71,7 +72,7 @@ open class IRCLapRFUSBConnection: NSObject {
         
         print("Configuring Pilot Slot")
         let bytes = IRCLapRFProtocol.configurePilotSlot(slot, config: config)
-        serialPort.send(Data(bytes: bytes))
+        serialPort.send(Data(bytes))
     }
     
     public func configurePilotSlots(_ slots: [IRCLapRFDevice.RFSetup]) {
@@ -79,15 +80,15 @@ open class IRCLapRFUSBConnection: NSObject {
         
         print("Configuring Pilot Slots")
         let bytes = IRCLapRFProtocol.configurePilotSlots(slots)
-        serialPort.send(Data(bytes: bytes))
+        serialPort.send(Data(bytes))
     }
     
     public func requestRTCTime() {
         guard let serialPort = serialPort else { return }
         
         print("Requesting RTC Time")
-        let bytes = IRCLapRFProtocol.requestRTCTime()
-        serialPort.send(Data(bytes: bytes))
+        let bytes = IRCLapRFProtocol.requestRTCTime(lapRFDevice)
+        serialPort.send(Data(bytes))
     }
     
     public func resetRTCTime() {
@@ -95,15 +96,15 @@ open class IRCLapRFUSBConnection: NSObject {
 
         print("Resetting RTC Time")
         let bytes = IRCLapRFProtocol.resetRTCTime()
-        serialPort.send(Data(bytes: bytes))
+        serialPort.send(Data(bytes))
     }
     
-    public func setRaceState(state: IRCLapRFProtocol.RaceState) {
+    public func setGateState(state: IRCLapRFDevice.GateState) {
         guard let serialPort = serialPort else { return }
         
-        print("Setting Race State")
-        let bytes = IRCLapRFProtocol.setRaceState(state)
-        serialPort.send(Data(bytes: bytes))
+        print("Setting Gate State")
+        let bytes = IRCLapRFProtocol.setGateState(state)
+        serialPort.send(Data(bytes))
     }
     
     public func setMinLapTime(_ minLapTime: UInt32) {
@@ -111,13 +112,13 @@ open class IRCLapRFUSBConnection: NSObject {
         
         print("Setting Min Lap Time")
         let bytes = IRCLapRFProtocol.setMinLapTime(minLapTime)
-        serialPort.send(Data(bytes: bytes))
+        serialPort.send(Data(bytes))
     }
 }
 
 extension IRCLapRFUSBConnection: ORSSerialPortDelegate {
     
-    public func serialPortWasRemoved(fromSystem serialPort: ORSSerialPort) {
+    public func serialPortWasRemovedFromSystem(_ serialPort: ORSSerialPort) {
         print("LapRF Serial Port Removed From System")
         serialPort.delegate = nil
         delegate?.usbConnectionClosed(self)

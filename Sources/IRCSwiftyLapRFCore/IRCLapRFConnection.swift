@@ -31,7 +31,7 @@ public protocol IRCLapRFConnection: class {
 }
 
 public extension IRCLapRFConnection {
-    public func rssiRangeUpdated(_ device: IRCLapRFDevice, slot: UInt8) {
+    func rssiRangeUpdated(_ device: IRCLapRFDevice, slot: UInt8) {
         let rssi = device.rssiPerSlot[Int(slot)]
         lastRSSI[Int(slot)].append(rssi.lastRssi)
         while lastRSSI[Int(slot)].count > 120 {
@@ -40,23 +40,23 @@ public extension IRCLapRFConnection {
         onRSSIRangeUpdated => (self, slot)
     }
     
-    public func rfSetupRead(_ device: IRCLapRFDevice, slot: UInt8) {
+    func rfSetupRead(_ device: IRCLapRFDevice, slot: UInt8) {
         onRFSetupRead => (self, slot)
     }
     
-    public func timeUpdated(_ device: IRCLapRFDevice) {
+    func timeUpdated(_ device: IRCLapRFDevice) {
         onTimeUpdated => self
     }
     
-    public func settingsUpdated(_ device: IRCLapRFDevice) {
+    func settingsUpdated(_ device: IRCLapRFDevice) {
         onSettingsUpdated => self
     }
     
-    public func passingRecordRead(_ device: IRCLapRFDevice, record: IRCLapRFDevice.PassingRecord) {
+    func passingRecordRead(_ device: IRCLapRFDevice, record: IRCLapRFDevice.PassingRecord) {
         onPassingRecordRead => (self, record)
     }
     
-    public func statusUpdated(_ device: IRCLapRFDevice) {
+    func statusUpdated(_ device: IRCLapRFDevice) {
         onStatusUpdated => self
     }
 }

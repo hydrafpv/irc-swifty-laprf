@@ -2,7 +2,9 @@
 //  IRCLapRFNetConnection.swift
 //
 
+import IRCSwiftyLapRFCore
 import CocoaAsyncSocket
+import Foundation
 import Signals
 
 open class IRCLapRFNetConnection: NSObject, IRCLapRFConnection, IRCLapRFDeviceDelegate {
@@ -125,7 +127,7 @@ open class IRCLapRFNetConnection: NSObject, IRCLapRFConnection, IRCLapRFDeviceDe
 extension IRCLapRFNetConnection: GCDAsyncSocketDelegate {
     public func socketDidDisconnect(_ socket: GCDAsyncSocket, withError err: Error?) {
         onConnected => false
-        print(err?.localizedDescription)
+//        print(err?.localizedDescription)
     }
     
     public func socket(_ socket: GCDAsyncSocket, didConnectToHost host: String, port: UInt16) {

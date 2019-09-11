@@ -509,11 +509,11 @@ fileprivate extension IRCLapRFProtocol {
                             device.rssiPerSlot[Int(slot)].meanRssi = packet.readFloat()
                         }
                     case RSSIField.unknown1.rawValue:
-                        let val: UInt32 = packet.readInteger()
+                        let _: UInt32 = packet.readInteger()
                         // increments if the slot is enabled.
                         // no idea what triggers the increment.
                     case RSSIField.unknown2.rawValue:
-                        let val: UInt32 = packet.readInteger()
+                        let _: UInt32 = packet.readInteger()
                     default:
                         print(String(format:"Record Type: 0x%02x, Unknown Signature: 0x%02x, Size: %d", type.rawValue, signature, size))
                     }
@@ -622,7 +622,7 @@ fileprivate extension IRCLapRFProtocol {
 
 fileprivate extension FixedWidthInteger {
     
-    fileprivate func toBytes(_ signature: UInt8) -> [UInt8] {
+    func toBytes(_ signature: UInt8) -> [UInt8] {
         // Not the most efficient, but it's not called that often, and makes the above code look nice and clean. :-)
         let byteCount = UInt8(bitWidth / 8)
         var bytes = [signature, byteCount]
@@ -637,7 +637,7 @@ fileprivate extension FixedWidthInteger {
 
 fileprivate extension Float {
     
-    fileprivate func toBytes(_ signature: UInt8) -> [UInt8] {
+    func toBytes(_ signature: UInt8) -> [UInt8] {
         var bytes = [signature, 4]
         // This seems very heavy handed to just get the 4 backing bytes of a Float into a Byte Array. :-/
         var copy = Float(self)
