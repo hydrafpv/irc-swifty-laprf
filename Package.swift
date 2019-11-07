@@ -5,7 +5,10 @@ import PackageDescription
 
 let package = Package(
     name: "IRCSwiftyLapRF",
-    platforms: [.macOS(SupportedPlatform.MacOSVersion.v10_13)],
+    platforms: [
+        .macOS(.v10_14),
+        .iOS(.v10)
+    ],
     products: [
         .library(name: "IRCSwiftyLapRFCore", targets: ["IRCSwiftyLapRFCore"]),
         .library(name: "IRCSwiftyLapRFBluetooth", targets: ["IRCSwiftyLapRFBluetooth"]),
