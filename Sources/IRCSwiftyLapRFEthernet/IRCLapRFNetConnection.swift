@@ -19,6 +19,7 @@ open class IRCLapRFNetConnection: NSObject, IRCLapRFConnection, IRCLapRFDeviceDe
     public let onPassingRecordRead = Signal<(IRCLapRFConnection, IRCLapRFDevice.PassingRecord)>()
     
     public var lastRSSI:[[Float]] = []
+    public var readOnly: Bool = false
     
     public var name: String {
         return "\(socketHost):\(socketPort)"
@@ -81,24 +82,28 @@ open class IRCLapRFNetConnection: NSObject, IRCLapRFConnection, IRCLapRFDeviceDe
     }
     
     @discardableResult public func resetRTCTime() -> Bool {
+        if readOnly { return false }
         let req = IRCLapRFProtocol.resetRTCTime()
         socket.write(Data(req), withTimeout: -1, tag: 0)
         return true
     }
     
     @discardableResult public func configurePilotSlot(_ slot: UInt8, config: IRCLapRFDevice.RFSetup) -> Bool {
+        if readOnly { return false }
         let req = IRCLapRFProtocol.configurePilotSlot(slot, config: config)
         socket.write(Data(req), withTimeout: -1, tag: 0)
         return true
     }
     
     @discardableResult public func configurePilotSlots(slots: [IRCLapRFDevice.RFSetup]) -> Bool {
+        if readOnly { return false }
         let req = IRCLapRFProtocol.configurePilotSlots(slots)
         socket.write(Data(req), withTimeout: -1, tag: 0)
         return true
     }
     
     @discardableResult public func setGateState(_ state: IRCLapRFDevice.GateState) -> Bool {
+        if readOnly { return false }
         let req = IRCLapRFProtocol.setGateState(state)
         device.gateState = state
         socket.write(Data(req), withTimeout: -1, tag: 0)
@@ -106,18 +111,21 @@ open class IRCLapRFNetConnection: NSObject, IRCLapRFConnection, IRCLapRFDeviceDe
     }
     
     @discardableResult public func setMinLapTime(_ milliseconds: UInt32) -> Bool {
+        if readOnly { return false }
         let req = IRCLapRFProtocol.setMinLapTime(milliseconds)
         socket.write(Data(req), withTimeout: -1, tag: 0)
         return true
     }
     
     @discardableResult public func setRSSIPacketRate(_ milliseconds: UInt32) -> Bool {
+        if readOnly { return false }
         let req = IRCLapRFProtocol.setRSSIPacketRate(milliseconds)
         socket.write(Data(req), withTimeout: -1, tag: 0)
         return true
     }
     
     @discardableResult public func setStatusMessageInterval(_ milliseconds: UInt16) -> Bool {
+        if readOnly { return false }
         let req = IRCLapRFProtocol.setStatusMessageInterval(milliseconds)
         socket.write(Data(req), withTimeout: -1, tag: 0)
         return true
@@ -127,7 +135,6 @@ open class IRCLapRFNetConnection: NSObject, IRCLapRFConnection, IRCLapRFDeviceDe
 extension IRCLapRFNetConnection: GCDAsyncSocketDelegate {
     public func socketDidDisconnect(_ socket: GCDAsyncSocket, withError err: Error?) {
         onConnected => false
-//        print(err?.localizedDescription)
     }
     
     public func socket(_ socket: GCDAsyncSocket, didConnectToHost host: String, port: UInt16) {

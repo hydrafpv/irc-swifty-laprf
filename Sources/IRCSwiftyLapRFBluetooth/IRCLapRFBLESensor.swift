@@ -20,6 +20,7 @@ open class IRCLapRFBLESensor: Sensor, IRCLapRFConnection, IRCLapRFDeviceDelegate
     public let onPassingRecordRead = Signal<(IRCLapRFConnection, IRCLapRFDevice.PassingRecord)>()
     
     public var lastRSSI:[[Float]] = []
+    public var readOnly: Bool = false
     
     // Quick Access to IRC Service and Control Point
     private var ircService: IRCLapRFBLEService? { return service(IRCLapRFBLEService.uuid) }
@@ -68,44 +69,44 @@ open class IRCLapRFBLESensor: Sensor, IRCLapRFConnection, IRCLapRFDeviceDelegate
     }
     
     @discardableResult public func resetRTCTime() -> Bool {
-        guard let cp = controlPoint else { return false }
+        guard let cp = controlPoint, !readOnly else { return false }
         cp.resetRTCTime()
         return true
     }
     
     @discardableResult public func configurePilotSlot(_ slot: UInt8, config: IRCLapRFDevice.RFSetup) -> Bool {
-        guard let cp = controlPoint else { return false }
+        guard let cp = controlPoint, !readOnly else { return false }
         cp.configurePilotSlot(slot, config: config)
         return true
     }
     
     @discardableResult public func configurePilotSlots(slots: [IRCLapRFDevice.RFSetup]) -> Bool {
-        guard let cp = controlPoint else { return false }
+        guard let cp = controlPoint, !readOnly else { return false }
         cp.configurePilotSlots(slots)
         return true
     }
     
     @discardableResult public func setGateState(_ state: IRCLapRFDevice.GateState) -> Bool {
-        guard let cp = controlPoint else { return false }
+        guard let cp = controlPoint, !readOnly else { return false }
         device.gateState = state
         cp.setGateState(state)
         return true
     }
     
     @discardableResult public func setMinLapTime(_ milliseconds: UInt32) -> Bool {
-        guard let cp = controlPoint else { return false }
+        guard let cp = controlPoint, !readOnly else { return false }
         cp.setMinLapTime(milliseconds)
         return true
     }
     
     @discardableResult public func setRSSIPacketRate(_ milliseconds: UInt32) -> Bool {
-        guard let cp = controlPoint else { return false }
+        guard let cp = controlPoint, !readOnly else { return false }
         cp.setRSSIPacketRate(milliseconds)
         return true
     }
     
     @discardableResult public func setStatusMessageInterval(_ milliseconds: UInt16) -> Bool {
-        guard let cp = controlPoint else { return false }
+        guard let cp = controlPoint, !readOnly else { return false }
         cp.setStatusMessageInterval(milliseconds)
         return true
     }
