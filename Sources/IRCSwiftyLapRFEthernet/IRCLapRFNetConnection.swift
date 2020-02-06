@@ -29,7 +29,7 @@ open class IRCLapRFNetConnection: NSObject, IRCLapRFConnection, IRCLapRFDeviceDe
     public let socketHost: String
     public let socketPort: UInt16
     public let onConnected = Signal<Bool>()
-    var isConnected: Bool {
+    public var isConnected: Bool {
         return socket.isConnected
     }
     public init(_ host: String, port: UInt16 = 5403) {
